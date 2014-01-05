@@ -24,6 +24,31 @@ int taskID, numTasks;
 
 
 
+int checkDiff( double** oldArray, double** newArray, int arrayX, int arrayY, double precision)
+{
+	int i,j;
+
+	for(i = 1; i < arrayX - 1; i++)
+	{
+		for(j = 1; j < arrayY - 1; j++)
+		{
+			double oldVal = oldArray[i][j],
+				   newVal = newArray[i][j];
+
+			// if the values differ by more than the precision
+			if( fabs(oldVal - newVal) > precision )
+			{
+				return 0;	// the arrays are too different
+			}
+		}
+	}
+
+	// Assume we passed
+	return 1;
+}
+
+
+
 /* Averages the values surrounding cardinal values in inArray and sets the
 	average to outArray. Ignores edges.
 	Returns 1 if result changed by less than the precission
@@ -66,9 +91,11 @@ int relaxation(double** inArray, double** outArray, int arrayX, int arrayY, doub
 	int sigStop		= 0;
 	int noChange	= 0;
 
+
+
 	while( sigStop == 0 )
 	{
-
+		printf("Task %d starting averaging. maxX:%d, maxY:%d\n", taskID, arrayX, arrayY);
 		noChange = averageFour(inArray, outArray, arrayX, arrayY, precision);
 
 		MPI_Allreduce(&noChange, &sigStop, 1, MPI_INT, MPI_MIN, MPI_COMM_WORLD);
@@ -78,6 +105,8 @@ int relaxation(double** inArray, double** outArray, int arrayX, int arrayY, doub
 			break;
 		}
 
+		MPI_Status status;
+
 		if (taskID != MASTER)
 			MPI_Send(outArray[1], arrayY, MPI_DOUBLE, taskID - 1, TAG_DATA_CHANGE, MPI_COMM_WORLD);
 
@@ -85,10 +114,10 @@ int relaxation(double** inArray, double** outArray, int arrayX, int arrayY, doub
 			MPI_Send(outArray[arrayX-2], arrayY, MPI_DOUBLE, taskID + 1, TAG_DATA_CHANGE, MPI_COMM_WORLD);
 
 		if (taskID != MASTER)
-			MPI_Recv((void*)outArray[0], arrayY, MPI_DOUBLE, taskID - 1, TAG_DATA_CHANGE, MPI_COMM_WORLD, 0);
+			MPI_Recv((void*)outArray[0], arrayY, MPI_DOUBLE, taskID - 1, TAG_DATA_CHANGE, MPI_COMM_WORLD, &status);
 
 		if (taskID != (numTasks - 1))
-			MPI_Recv((void*)outArray[arrayX-1], arrayY, MPI_DOUBLE, taskID + 1, TAG_DATA_CHANGE, MPI_COMM_WORLD, 0);
+			MPI_Recv((void*)outArray[arrayX-1], arrayY, MPI_DOUBLE, taskID + 1, TAG_DATA_CHANGE, MPI_COMM_WORLD, &status);
 
 		int i;
 		for( i = 0; i < arrayX - 1; i++)
@@ -99,6 +128,19 @@ int relaxation(double** inArray, double** outArray, int arrayX, int arrayY, doub
 	}
 
 	return 0;
+}
+
+
+int calculateChunkSize(int arraySize, int taskRank)
+{
+	int chunkSize = (arraySize / numTasks) + 2;
+
+	if( taskRank == (numTasks - 1) ) //last task
+	{
+		chunkSize = arraySize - ((arraySize / numTasks) * (numTasks - 1));
+	}
+
+	return chunkSize;
 }
 
 
@@ -113,14 +155,17 @@ void printUsage()
 			"Zero will use current time() as the seed\n"
 			"\t-v\t:\tNone\t-\tFlag to enable more console spew\n"
 			"\t-c\t:\tNone\t-\tFlag to enable the correctness test\n");
-	// Windows command to stop console applications closing immediately.
-	system("pause");
 	exit(0);
 }
 
 
 int main(int argc, char **argv)
 {
+	MPI_Init(&argc,&argv);
+	MPI_Comm_size(MPI_COMM_WORLD,&numTasks);
+	MPI_Comm_rank(MPI_COMM_WORLD,&taskID);
+	printf ("MPI task %d/%d has started...\n", taskID, numTasks);
+
 	// Initial values (should get from cmd line)
 	int arraySize		= 10;
 	double precision	= 10;
@@ -128,11 +173,6 @@ int main(int argc, char **argv)
 	int testRight		= 0;
 
 	__VERBOSE 		= 0;
-
-	MPI_Init(&argc,&argv);
-	MPI_Comm_size(MPI_COMM_WORLD,&numTasks);
-	MPI_Comm_rank(MPI_COMM_WORLD,&taskID);
-	printf ("MPI task %d/%d has started...\n", taskID, numTasks);
 
 	// Read options
 	// -s is the size, -p is the precision and -t is number of threads.
@@ -181,18 +221,7 @@ int main(int argc, char **argv)
            }
 	}
 
-
-
-	printf("Starting to relax %d square array to precision %f.",
-			arraySize, precision);
-	printf(" Seed: %d.\n", arrSeed);
-
-	int chunkSize = (arraySize / numTasks) + 2;
-
-	if( taskID == (numTasks - 1) ) //last task
-	{
-		chunkSize = arraySize - ((arraySize / numTasks) * (numTasks - 1));
-	}
+	int chunkSize = calculateChunkSize(arraySize, taskID);
 
 	double** currArray;
 	double** nextArray;
@@ -200,43 +229,66 @@ int main(int argc, char **argv)
 	// == Setup the data ==
 	if (taskID == MASTER)
 	{
+		printf("Starting to relax %d square array to precision %f.\n",
+			arraySize, precision);
+
+		printf("Master creating its arrays.\n");
 		currArray = make2DDoubleArray(arraySize, arraySize);
 		nextArray = make2DDoubleArray(arraySize, arraySize);
-		initArray(currArray, arraySize, arrSeed);
+		initArrayPattern(currArray, arraySize);
+		printf("Master created its arrays.\n");
 
-		int	columnPos = chunkSize,  // Skip the chunk the master gets
+		if (__VERBOSE)
+		{
+			printf("Initial array:\n");
+			printSquareArray(currArray, arraySize);
+		}
+
+		int	columnPos = chunkSize - 2,  // Skip the chunk the master gets
 			i;
 		for ( i = 1; i < numTasks; i++) // don't send to self
 		{
-			if( i == (numTasks - 1) ) //last task
-			{
-				chunkSize = arraySize - ((arraySize / numTasks) * (numTasks - 1));
-			}
+			chunkSize = calculateChunkSize(arraySize, i);
 
 			double* oData = malloc(arraySize*chunkSize*sizeof(double));
+
+			if (oData == NULL)
+			{
+				printf("malloc error! crashing...");
+			}
 
 			int j, currPos = 0;
 			for( j = 0; j < chunkSize; j++)
 			{
 				memcpy(&oData[currPos], currArray[columnPos++], arraySize*sizeof(double));
 				currPos += arraySize;
+				if (currPos >= arraySize*chunkSize)
+				{
+					printf("OOps we've copied too much!\n");
+
+				}
 			}
 
-			MPI_Send((void*)oData, (arraySize*chunkSize), MPI_DOUBLE, i, TAG_INIT_DATA, MPI_COMM_WORLD);
+			printf("Sending data to task %d\n", i);
+			MPI_Send(oData, (arraySize*chunkSize), MPI_DOUBLE, i, TAG_INIT_DATA, MPI_COMM_WORLD);
+			printf("Sent data to task %d\n", i);
 
 			columnPos -= 2; // Overlap the data
 
 			free(oData);
 		}
 
-		chunkSize = (arraySize / numTasks) + 2; // we changed the chunkSize val
+		chunkSize = calculateChunkSize(arraySize, taskID);// we changed the chunkSize val
 
 	}
 	else
 	{
 		double* inBuff = malloc(arraySize*chunkSize*sizeof(double));
+		MPI_Status status;
 
-		MPI_Recv((void*)inBuff, arraySize*chunkSize, MPI_DOUBLE, MASTER, TAG_INIT_DATA, MPI_COMM_WORLD, 0);
+		printf("Task %d, waiting for data...\n", taskID);
+		MPI_Recv((void*)inBuff, arraySize*chunkSize, MPI_DOUBLE, MASTER, TAG_INIT_DATA, MPI_COMM_WORLD, &status);
+		printf("Task %d, recieved data...\n", taskID);
 
 		currArray = make2DDoubleArray(chunkSize, arraySize);
 		nextArray = make2DDoubleArray(chunkSize, arraySize);
@@ -245,23 +297,27 @@ int main(int argc, char **argv)
 		for( j = 0; j < chunkSize; j++)
 		{
 			memcpy(currArray[j], &inBuff[currPos], arraySize*sizeof(double));
+			memcpy(nextArray[j], currArray[j],	arraySize*sizeof(double));
 			currPos += arraySize;
 		}
 
 		free(inBuff);
 	}
 
+	printf("Starting relaxation for task %d.\n", taskID);
 	// Do the work
 	relaxation(currArray, nextArray, chunkSize, arraySize, precision);
 
+	printf("Finished relaxation for task %d.\n", taskID);
 
 	if (taskID != MASTER)
 	{
+		printf("Sending data to master (task %d).\n", taskID);
 		double* outData = malloc(chunkSize*arraySize*sizeof(double));
 		int j, currPos = 0;
 		for( j = 2; j < chunkSize; j++) // skip first 2 columns
 		{
-			memcpy(&outData[currPos], nextArray[j++], arraySize*sizeof(double));
+			memcpy(&outData[currPos], nextArray[j], arraySize*sizeof(double));
 			currPos += arraySize;
 		}
 
@@ -270,16 +326,15 @@ int main(int argc, char **argv)
 	}
 	else
 	{
+		printf("Receiving data.\n");
 		int i, columnPos = chunkSize;
 		double* inData = malloc(chunkSize*arraySize*sizeof(double));
 		for( i = 1; i < numTasks; i++)
 		{
-			if (i == (numTasks - 1))
-			{
-				chunkSize = arraySize - ((arraySize / numTasks) * (numTasks - 1));
-			}
+			chunkSize = calculateChunkSize(arraySize, i);
 
-			MPI_Recv((void*)inData, arraySize*chunkSize, MPI_DOUBLE, i, TAG_COMPLETE_DATA, MPI_COMM_WORLD, 0);
+			MPI_Status status;
+			MPI_Recv(inData, arraySize*chunkSize, MPI_DOUBLE, i, TAG_COMPLETE_DATA, MPI_COMM_WORLD, &status);
 
 			int currPos = 0, j;
 			for( j = 0; j < chunkSize - 2; j++)
@@ -292,6 +347,37 @@ int main(int argc, char **argv)
 	}
 
 
+	if (__VERBOSE && (taskID == MASTER))
+	{
+		printf("Parallel result:\n");
+		printSquareArray(nextArray, arraySize);
+	}
+
+	if (testRight && (taskID == MASTER))
+	{
+		double** startArray	= make2DDoubleArray(arraySize, arraySize);
+		double** endArray	= make2DDoubleArray(arraySize, arraySize);
+		initArrayPattern(startArray, arraySize);
+
+		int fin = 0;
+
+		while( fin == 0 )
+		{
+			fin = averageFour(startArray, endArray, arraySize, arraySize, precision);
+
+			int i;
+			for( i = 0; i < arraySize - 1; i++)
+			{
+				memcpy(startArray[i], endArray[i], arraySize * sizeof(double));
+			}
+		}
+
+		int diff = checkDiff(endArray, nextArray, arraySize, arraySize, precision);
+
+		printf("Parallel result %s the serial result\n", diff ? "matched" : "didn't match");
+	}
+
+	printf("Starting cleanup for task %d.\n", taskID);
 
 	// Cleanup
 	free2DDoubleArray(currArray, arraySize);
@@ -299,11 +385,12 @@ int main(int argc, char **argv)
 
 	double eTime = MPI_Wtime();
 
-	printf("Relaxed %d square matrix in %f seconds\n",
-			arraySize, eTime);
+	printf("Relaxed %d square matrix in %f seconds (task: %d/%d)\n",
+			arraySize, eTime, taskID, numTasks);
 
 
-	// Windows command to stop console applications closing immediately.
+	MPI_Finalize();
+
 	system("pause");
 
 	return 0;
