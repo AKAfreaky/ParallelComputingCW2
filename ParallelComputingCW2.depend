@@ -17,12 +17,12 @@
 
 1385503704 c:\users\alex\development\projects\parallelcomputingcw1\arrayhelpers.h
 
-1388884352 source:c:\users\alex\development\projects\parallelcomputingcw2\arrayhelpers.c
+1388945098 source:c:\users\alex\development\projects\parallelcomputingcw2\arrayhelpers.c
 	<stdio.h>
 	<stdlib.h>
 	<time.h>
 
-1388881914 source:c:\users\alex\development\projects\parallelcomputingcw2\main.c
+1388959327 source:c:\users\alex\development\projects\parallelcomputingcw2\main.c
 	<ctype.h>
 	<stdio.h>
 	<stdlib.h>
@@ -30,10 +30,11 @@
 	<time.h>
 	<sys/time.h>
 	<string.h>
+	<math.h>
 	"arrayHelpers.h"
 	"mpi.h"
 
-1388872001 c:\users\alex\development\projects\parallelcomputingcw2\arrayhelpers.h
+1388947414 c:\users\alex\development\projects\parallelcomputingcw2\arrayhelpers.h
 
 1100080660 c:\users\alex\development\libraries\mpich2x64\include\mpi.h
 	"mpio.h"
