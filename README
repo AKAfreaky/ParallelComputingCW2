@@ -1,0 +1,8 @@
+Coursework 2 for Parallel Computing. 
+Course page here http://people.bath.ac.uk/masrjb/CourseNotes/cm30225.html
+
+Goal is to implement the relaxation technique for solving differential equations
+in parallel using MPI functions.
+
+Basically, each number in a 2D array (apart from the edges) becomes the average
+of its 4 neighbours, until the values don't change to a given precision.
