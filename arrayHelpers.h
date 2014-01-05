@@ -4,6 +4,8 @@
 // fills a 2D-square array with random values
 void initArray( double** theArray, int arraySize, int seed );
 
+void initArrayPattern( double** theArray, int arraySize );
+
 void printSquareArray( double** theArray, int arraySize );
 
 double** make2DDoubleArray(int arraySizeX, int arraySizeY);

@@ -17,6 +17,21 @@ void initArray( double** theArray, int arraySize, int seed )
 	}
 }
 
+// 2D array with 1s on 2 edges
+void initArrayPattern( double** theArray, int arraySize )
+{
+	int i, j;
+	for( i = 0; i < arraySize; i++ )
+	{
+		for( j = 0; j < arraySize; j++ )
+		{
+			double value = (j == 0) || (i == 0) ? 1.0 : 0.0;
+			theArray[i][j] = value;
+		}
+	}
+}
+
+
 void printSquareArray( double** theArray, int arraySize )
 {
 	int i, j;
@@ -24,7 +39,7 @@ void printSquareArray( double** theArray, int arraySize )
 	{
 		for( j = 0; j < arraySize; j++ )
 		{
-			printf("%f\t", theArray[i][j]);
+			printf("%g\t", theArray[i][j]);
 		}
 		printf("\n");
 	}
