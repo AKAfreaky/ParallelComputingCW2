@@ -1,0 +1,46 @@
+# depslib dependency file v1.0
+1385516854 source:c:\users\alex\development\projects\parallelcomputingcw1\main.c
+	<ctype.h>
+	<stdio.h>
+	<stdlib.h>
+	<unistd.h>
+	<time.h>
+	<string.h>
+	<pthread.h>
+	<semaphore.h>
+	"arrayHelpers.h"
+
+1385503686 source:c:\users\alex\development\projects\parallelcomputingcw1\arrayhelpers.c
+	<stdio.h>
+	<stdlib.h>
+	<time.h>
+
+1385503704 c:\users\alex\development\projects\parallelcomputingcw1\arrayhelpers.h
+
+1388884352 source:c:\users\alex\development\projects\parallelcomputingcw2\arrayhelpers.c
+	<stdio.h>
+	<stdlib.h>
+	<time.h>
+
+1388881914 source:c:\users\alex\development\projects\parallelcomputingcw2\main.c
+	<ctype.h>
+	<stdio.h>
+	<stdlib.h>
+	<unistd.h>
+	<time.h>
+	<sys/time.h>
+	<string.h>
+	"arrayHelpers.h"
+	"mpi.h"
+
+1388872001 c:\users\alex\development\projects\parallelcomputingcw2\arrayhelpers.h
+
+1100080660 c:\users\alex\development\libraries\mpich2x64\include\mpi.h
+	"mpio.h"
+	"mpicxx.h"
+
+1100080660 c:\users\alex\development\libraries\mpich2x64\include\mpio.h
+	"mpi.h"
+
+1100080660 c:\users\alex\development\libraries\mpich2x64\include\mpicxx.h
+
