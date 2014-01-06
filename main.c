@@ -12,19 +12,26 @@
 
 // Global 'debugging' variable
 int __VERBOSE;
+
 // John Simms' task ID
 #define MASTER 0
 
 // Globals for MPI info
 int taskID, numTasks, normChunkSize, lastChunkSize;
 
+// Tags for MPI_Send/Recv
 #define TAG_INIT_DATA		0
 #define TAG_COMPLETE_DATA	1
 #define TAG_DATA_CHANGE		2
 
 
-
-int checkDiff( double** oldArray, double** newArray, int arrayX, int arrayY, double precision)
+/* Returns 1 if the two input arrays differ by less than the precision
+*/
+int checkDiff(	double** oldArray,
+				double** newArray,
+			 	int arrayX,
+			 	int arrayY,
+			 	double precision)
 {
 	int i,j;
 
@@ -48,12 +55,15 @@ int checkDiff( double** oldArray, double** newArray, int arrayX, int arrayY, dou
 }
 
 
-
 /* Averages the values surrounding cardinal values in inArray and sets the
 	average to outArray. Ignores edges.
 	Returns 1 if result changed by less than the precission
 */
-int averageFour( double** inArray, double** outArray, int arrayX, int arrayY, double precision)
+int averageFour( double** inArray,
+				 double** outArray,
+				 int arrayX,
+				 int arrayY,
+				 double precision)
 {
 	int i, j, retVal = 1;
 	//from pos 1 to arraySize-2 as edges are fixed
@@ -84,7 +94,14 @@ int averageFour( double** inArray, double** outArray, int arrayX, int arrayY, do
 }
 
 
-int relaxation(double** inArray, double** outArray, int arrayX, int arrayY, double precision)
+/* Repeatedly calls averageFour until done.
+	Syncronises and communitcates with other processes with MPI
+*/
+int relaxation(	double** inArray,
+				double** outArray,
+				int arrayX,
+				int arrayY,
+				double precision)
 {
 	MPI_Barrier(MPI_COMM_WORLD);// Wait until everyone is good to go.
 
@@ -96,7 +113,10 @@ int relaxation(double** inArray, double** outArray, int arrayX, int arrayY, doub
 	while( sigStop == 0 )
 	{
 		if (__VERBOSE)
-			printf("Task %d starting averaging. maxX:%d, maxY:%d\n", taskID, arrayX, arrayY);
+		{
+			printf("Task %d starting averaging. maxX:%d, maxY:%d\n",
+					taskID, arrayX, arrayY);
+		}
 
 		noChange = averageFour(inArray, outArray, arrayX, arrayY, precision);
 
@@ -110,16 +130,22 @@ int relaxation(double** inArray, double** outArray, int arrayX, int arrayY, doub
 		MPI_Status status;
 
 		if (taskID != MASTER)
-			MPI_Send(outArray[1], arrayY, MPI_DOUBLE, taskID - 1, TAG_DATA_CHANGE, MPI_COMM_WORLD);
+			MPI_Send(outArray[1], arrayY, MPI_DOUBLE, taskID - 1,
+								  TAG_DATA_CHANGE, MPI_COMM_WORLD);
 
 		if (taskID != (numTasks - 1))
-			MPI_Send(outArray[arrayX-2], arrayY, MPI_DOUBLE, taskID + 1, TAG_DATA_CHANGE, MPI_COMM_WORLD);
+			MPI_Recv(outArray[arrayX-1], arrayY, MPI_DOUBLE, taskID + 1,
+								  TAG_DATA_CHANGE, MPI_COMM_WORLD, &status);
+
+		if (taskID != (numTasks - 1))
+			MPI_Send(outArray[arrayX-2], arrayY, MPI_DOUBLE, taskID + 1,
+								  TAG_DATA_CHANGE, MPI_COMM_WORLD);
 
 		if (taskID != MASTER)
-			MPI_Recv(outArray[0], arrayY, MPI_DOUBLE, taskID - 1, TAG_DATA_CHANGE, MPI_COMM_WORLD, &status);
+			MPI_Recv(outArray[0], arrayY, MPI_DOUBLE, taskID - 1,
+								  TAG_DATA_CHANGE, MPI_COMM_WORLD, &status);
 
-		if (taskID != (numTasks - 1))
-			MPI_Recv(outArray[arrayX-1], arrayY, MPI_DOUBLE, taskID + 1, TAG_DATA_CHANGE, MPI_COMM_WORLD, &status);
+
 
 		int i;
 		for( i = 0; i < arrayX; i++)
@@ -135,6 +161,8 @@ int relaxation(double** inArray, double** outArray, int arrayX, int arrayY, doub
 }
 
 
+/* Get the calculated chunkSize for a certain rank
+*/
 int getChunkSize(int taskRank)
 {
 	if( taskRank == (numTasks - 1) )
@@ -161,8 +189,11 @@ void printUsage()
 }
 
 
+/* The main function
+*/
 int main(int argc, char **argv)
 {
+	// This is the main function
 	MPI_Init(&argc,&argv);
 	MPI_Comm_size(MPI_COMM_WORLD,&numTasks);
 	MPI_Comm_rank(MPI_COMM_WORLD,&taskID);
@@ -227,92 +258,30 @@ int main(int argc, char **argv)
 	}
 
 	// == Setup the data ==
-	if (taskID == MASTER)
-	{
-		if (__VERBOSE)
-		{
-			printf("Starting to relax %d square array to precision %f.\n",
-														arraySize, precision);
-		}
 
-		// malloc arrays
-		startArray = make2DDoubleArray(arraySize, arraySize);
-		endArray = make2DDoubleArray(arraySize, arraySize);
+	// malloc arrays
+	startArray = make2DDoubleArray(arraySize, arraySize);
+	endArray = make2DDoubleArray(arraySize, arraySize);
 
-		// fill arrays
-		initArrayPattern(startArray, arraySize);
-		initArrayPattern(endArray, arraySize);
+	// fill arrays
+	initArrayPattern(startArray, arraySize);
+	initArrayPattern(endArray, arraySize);
 
-		if (__VERBOSE)
-		{
-			printf("Initial array:\n");
-			printSquareArray(startArray, arraySize);
-		}
-
-		int	columnPos = chunkSize - 2, i;  // Skip the chunk the master gets
-
-		for ( i = 1; i < numTasks; i++) // don't send to self
-		{
-			chunkSize = getChunkSize(i);
-
-			double* sendBuff = malloc(arraySize*chunkSize*sizeof(double));
-
-			int j, currPos = 0;
-			for( j = 0; j < chunkSize; j++)
-			{
-				memcpy(&sendBuff[currPos], startArray[columnPos++], arraySize*sizeof(double));
-				currPos += arraySize;
-			}
-
-			MPI_Send(sendBuff, (arraySize*chunkSize), MPI_DOUBLE, i, TAG_INIT_DATA, MPI_COMM_WORLD);
-
-			if(__VERBOSE)
-				printf("Master sent data to task %d\n", i);
-
-			columnPos -= 2; // Overlap the data
-
-			free(sendBuff);
-		}
-
-		chunkSize = getChunkSize(taskID);// we changed the chunkSize val
-
-	}
-	else
-	{
-		double* inBuff = malloc(arraySize*chunkSize*sizeof(double));
-		MPI_Status status;
-
-		if(__VERBOSE)
-			printf("Task %d, waiting for data...\n", taskID);
-
-		MPI_Recv((void*)inBuff, arraySize*chunkSize, MPI_DOUBLE, MASTER, TAG_INIT_DATA, MPI_COMM_WORLD, &status);
-
-		if(__VERBOSE)
-			printf("Task %d, recieved data...\n", taskID);
-
-		startArray	= make2DDoubleArray(chunkSize, arraySize);
-		endArray	= make2DDoubleArray(chunkSize, arraySize);
-
-		int currPos = 0, j;
-		for( j = 0; j < chunkSize; j++)
-		{
-			memcpy(startArray[j], &inBuff[currPos], arraySize*sizeof(double));
-			memcpy(endArray[j], startArray[j],	arraySize*sizeof(double));
-			currPos += arraySize;
-		}
-
-		free(inBuff);
-	}
+	int initialPos = ( arraySize / numTasks ) * taskID;
 
 	if(__VERBOSE)
 		printf("Starting relaxation for task %d.\n", taskID);
 
 	// == Do the work ==
-	relaxation(startArray, endArray, chunkSize, arraySize, precision);
+	relaxation(&startArray[initialPos], &endArray[initialPos],
+							 chunkSize, arraySize, precision);
 
-	if(__VERBOSE)
-		printf("Finished relaxation for task %d.\n", taskID);
+	double relaxTime = MPI_Wtime();
 
+	printf("Finished relaxation for task %d in %g seconds\n",
+			taskID, (relaxTime - sTime));
+
+	// == Send data back to master ==
 	if (taskID != MASTER)
 	{
 		double* outData = malloc(chunkSize*arraySize*sizeof(double));
@@ -320,11 +289,13 @@ int main(int argc, char **argv)
 		int j, currPos = 0;
 		for( j = 2; j < chunkSize; j++) // skip first 2 columns
 		{
-			memcpy(&outData[currPos], endArray[j], arraySize*sizeof(double));
+			memcpy(&outData[currPos], endArray[initialPos + j],
+									 arraySize*sizeof(double));
 			currPos += arraySize;
 		}
 
-		MPI_Send(outData, arraySize*chunkSize, MPI_DOUBLE, MASTER, TAG_COMPLETE_DATA, MPI_COMM_WORLD);
+		MPI_Send(outData, arraySize*chunkSize, MPI_DOUBLE, MASTER,
+						  TAG_COMPLETE_DATA, MPI_COMM_WORLD);
 		free(outData);
 	}
 	else
@@ -347,12 +318,15 @@ int main(int argc, char **argv)
 
 
 			MPI_Status status;
-			MPI_Recv(inData, arraySize*chunkSize, MPI_DOUBLE, i, TAG_COMPLETE_DATA, MPI_COMM_WORLD, &status);
+			MPI_Recv(inData, arraySize*chunkSize, MPI_DOUBLE, i,
+							 TAG_COMPLETE_DATA, MPI_COMM_WORLD, &status);
 
 			int currPos = 0, j;
+
 			for( j = 0; j < chunkSize - 2; j++)
 			{
-				memcpy(endArray[columnPos++], &inData[currPos], arraySize*sizeof(double));
+				memcpy(endArray[columnPos++], &inData[currPos],
+											 arraySize*sizeof(double));
 				currPos += arraySize;
 			}
 		}
@@ -366,6 +340,7 @@ int main(int argc, char **argv)
 		printSquareArray(endArray, arraySize);
 	}
 
+	// == Test if needed ==
 	if (testRight && (taskID == MASTER))
 	{
 		double** checkArray1	= make2DDoubleArray(arraySize, arraySize);
@@ -378,28 +353,30 @@ int main(int argc, char **argv)
 
 		while( fin == 0 )
 		{
-			fin = averageFour(checkArray1, checkArray2, arraySize, arraySize, precision);
+			fin = averageFour(checkArray1, checkArray2, arraySize, arraySize,
+																   precision);
 
 			int i;
 			for( i = 1; i < arraySize - 1; i++)
 			{
-				memcpy(checkArray1[i], checkArray2[i], arraySize * sizeof(double));
+				memcpy(checkArray1[i], checkArray2[i],
+									 arraySize * sizeof(double));
 			}
 		}
 
-		int diff = checkDiff(endArray, checkArray2, arraySize, arraySize, precision);
+		int diff = checkDiff(endArray, checkArray2, arraySize, arraySize,
+															   precision);
 
-		printf("Parallel result %s the serial result\n", diff ? "matched" : "didn't match");
+		printf("Parallel result %s the serial result\n",
+				diff ? "matched" : "didn't match");
 	}
 
 	if(__VERBOSE)
 		printf("Starting cleanup for task %d.\n", taskID);
 
-	// Cleanup
-	chunkSize = getChunkSize(taskID);
-
-	free2DDoubleArray(startArray, (taskID == MASTER) ? arraySize : chunkSize);
-	free2DDoubleArray(endArray, (taskID == MASTER) ? arraySize : chunkSize);
+	// == Cleanup ==
+	free2DDoubleArray(startArray, arraySize );
+	free2DDoubleArray(endArray, arraySize );
 
 	double eTime = MPI_Wtime();
 
@@ -408,8 +385,6 @@ int main(int argc, char **argv)
 
 
 	MPI_Finalize();
-
-	system("pause");
 
 	return 0;
 }
