@@ -24,7 +24,7 @@
 				<Option object_output="obj/Release/" />
 				<Option type="1" />
 				<Option compiler="gcc" />
-				<Option parameters="-s 100 -p 1.5 -t 2" />
+				<Option parameters="-s 100 -p 1.5 -v -c" />
 				<Compiler>
 					<Add option="-O2" />
 				</Compiler>
