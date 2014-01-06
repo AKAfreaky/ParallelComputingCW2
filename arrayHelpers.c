@@ -25,7 +25,7 @@ void initArrayPattern( double** theArray, int arraySize )
 	{
 		for( j = 0; j < arraySize; j++ )
 		{
-			double value = (j == 0) || (i == 0) ? 1.0 : 0.0;
+			double value = (j == 0) || (i == 0) ? 98.6 : 32.0;
 			theArray[i][j] = value;
 		}
 	}
